@@ -16,6 +16,8 @@ import tapir.json.circe._
 object Endpoints {
   import Implicits._
 
+  case object NoContent extends Exception("No Content")
+
   val updateTariff: Endpoint[Tariff, Unit, Unit, Nothing] =
     endpoint
       .name("Update tariff")
@@ -68,12 +70,14 @@ object Endpoints {
       .out(
         binaryBody[List[ChargeSessionOverview]]
           .and(header("Content-Type", "text/csv"))
+          .and(header("Content-Disposition", "attachment"))
       )
 
   private object Implicits {
     implicit val tariffCodec:  CirceCodec[Tariff]        = deriveCodec
     implicit val sessionCodec: CirceCodec[ChargeSession] = deriveCodec
 
+    // TODO: Provide CSV header derivation
     implicit val overviewCsvCodec: Codec[List[ChargeSessionOverview], MediaType.OctetStream, File] =
       csvFileCodec[ChargeSessionOverview](CsvConfiguration.rfc.withoutHeader)
   }
@@ -87,11 +91,14 @@ object Endpoints {
           .asCsvReader[T](config)
           .toList
           .map(_.toTry.get)
-      }(list => {
-        val file = File.createTempFile(s"export", ".csv")
-        file.writeCsv(list, config)
-        file
-      })
+      }(list =>
+        if (list.isEmpty) throw NoContent
+        else {
+          val file = File.createTempFile(s"export", ".csv")
+          file.writeCsv(list, config)
+          file
+        }
+      )
   }
 
   private def dateInFuture: Validator[ZonedDateTime] =
