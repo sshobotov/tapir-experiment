@@ -21,6 +21,13 @@ libraryDependencies ++= Seq(
   , "com.nrinaudo"           %% "kantan.csv-generic"        % kantanCsvVersion
   , "org.typelevel"          %% "cats-core"                 % "2.0.0"
   , "org.typelevel"          %% "cats-effect"               % "2.0.0"
+  , "com.lihaoyi"            %% "utest"                     % "0.7.1" % "test"
+)
+
+scalacOptions ++= Seq(
+    "-Ypartial-unification"
+  , "-language:higherKinds"
+  , "-feature"
 )
 
 javaOptions ++= Seq(
@@ -28,3 +35,5 @@ javaOptions ++= Seq(
 )
 
 run / mainClass := Some("com.tvi.api.Application")
+
+testFrameworks += new TestFramework("utest.runner.Framework")

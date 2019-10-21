@@ -23,7 +23,7 @@ object Storage {
       , service:  Double
     )
 
-    def inMemory[F[_]: Sync](default: Entity): F[TariffStorage[F]] = {
+    def inMemory[F[_]: Sync](initial: Entity): F[TariffStorage[F]] = {
       val ordering = Ordering.fromLessThan[ZonedDateTime](_ isBefore _).reverse
 
       for {
@@ -37,9 +37,9 @@ object Storage {
             ref.get
               .map {
                 _
-                  .find { case (key, _) => key.isBefore(date) }
+                  .find { case (key, _) => !key.isAfter(date) }
                   .map { case (_, value) => value }
-                  .getOrElse(default)
+                  .getOrElse(initial)
               }
         }
       }
@@ -61,19 +61,22 @@ object Storage {
       , totalServiceFee: Double
     )
 
-    def inMemory[F[_]: Sync]: F[ChargeSessionStorage[F]] =
+    def inMemory[F[_]: Sync]: F[ChargeSessionStorage[F]] = {
+      val ordering = Ordering.fromLessThan[ZonedDateTime](_ isBefore _).reverse
+
       for {
         ref <- Ref.of[F, Map[DriverId, List[ChargeSessionStorage.Entity]]](Map.empty)
       } yield {
         new ChargeSessionStorage[F] {
           override def put(driverId: DriverId, value: ChargeSessionStorage.Entity): F[Unit] =
             ref.update { index =>
-              index.updated(driverId, index.getOrElse(driverId, List.empty) :+ value)
+              index.updated(driverId, (index.getOrElse(driverId, List.empty) :+ value).sortBy(_.startedAt)(ordering))
             }
 
           override def get(driverId: DriverId): F[List[ChargeSessionStorage.Entity]] =
             ref.get.map(_.getOrElse(driverId, List.empty))
         }
       }
+    }
   }
 }

@@ -4,7 +4,7 @@ import cats.implicits._
 import cats.effect.{ContextShift, ExitCode, IO, IOApp, Resource, Sync}
 import org.http4s.{EntityBody, HttpRoutes}
 import org.http4s.server.Router
-import org.http4s.syntax.kleisli._
+import org.http4s.implicits._
 import org.http4s.server.blaze.BlazeServerBuilder
 import tapir.Endpoint
 import tapir.docs.openapi._

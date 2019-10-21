@@ -23,7 +23,7 @@ object Endpoints {
       .name("Update tariff")
       .summary("Updates service fees for charge sessions")
       .post
-      .in("tariff")
+      .in("tariffs")
       .in(
         jsonBody[Tariff]
           .description("Value to persist")
@@ -39,7 +39,7 @@ object Endpoints {
       .name("Create charge session")
       .summary("Creates charge session sent by charge point")
       .post
-      .in("session")
+      .in("sessions")
       .in(
         jsonBody[ChargeSession]
           .description("Value to persist")
@@ -65,7 +65,7 @@ object Endpoints {
       .in(
         path[String].validate(identifier)
       )
-      .in("session")
+      .in("sessions")
       .in("export.csv")
       .out(
         binaryBody[List[ChargeSessionOverview]]
