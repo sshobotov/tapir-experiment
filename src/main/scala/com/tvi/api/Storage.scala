@@ -24,6 +24,7 @@ object Storage {
     )
 
     def inMemory[F[_]: Sync](initial: Entity): F[TariffStorage[F]] = {
+      // Historical data is less relevant for lookup
       val ordering = Ordering.fromLessThan[ZonedDateTime](_ isBefore _).reverse
 
       for {
@@ -62,6 +63,7 @@ object Storage {
     )
 
     def inMemory[F[_]: Sync]: F[ChargeSessionStorage[F]] = {
+      // Historical expenses may be less interesting
       val ordering = Ordering.fromLessThan[ZonedDateTime](_ isBefore _).reverse
 
       for {
@@ -70,11 +72,13 @@ object Storage {
         new ChargeSessionStorage[F] {
           override def put(driverId: DriverId, value: ChargeSessionStorage.Entity): F[Unit] =
             ref.update { index =>
-              index.updated(driverId, (index.getOrElse(driverId, List.empty) :+ value).sortBy(_.startedAt)(ordering))
+              index.updated(driverId, value :: index.getOrElse(driverId, List.empty))
             }
 
           override def get(driverId: DriverId): F[List[ChargeSessionStorage.Entity]] =
-            ref.get.map(_.getOrElse(driverId, List.empty))
+            ref.get map {
+              _.getOrElse(driverId, List.empty).sortBy(_.startedAt)(ordering)
+            }
         }
       }
     }

@@ -30,7 +30,7 @@ class Service[F[_]: Sync: Parallel](
 
         value.into[ChargeSessionStorage.Entity]
           .withFieldConst(_.totalPrice, totalPrice)
-          .withFieldConst(_.totalServiceFee, serviceFee)
+          .withFieldConst(_.totalServiceFee, totalPrice + serviceFee)
           .transform
       }
 

@@ -12,81 +12,101 @@ import kantan.csv.java8._
 import kantan.csv.generic._
 import tapir._
 import tapir.json.circe._
+import tapir.model.UsernamePassword
+
+import scala.util.control.NoStackTrace
 
 object Endpoints {
   import Implicits._
 
-  case object NoContent extends Exception("No Content")
+  sealed abstract class StatusError(message: String) extends Exception with NoStackTrace
 
-  val updateTariff: Endpoint[Tariff, Unit, Unit, Nothing] =
+  case object NoContent extends StatusError("No Content")
+  case object Unauthorized extends StatusError("Unauthorized")
+
+  val updateTariff: Endpoint[(UsernamePassword, Tariff), String, Unit, Nothing] =
     endpoint
       .name("Update tariff")
       .summary("Updates service fees for charge sessions")
       .post
+      .in(auth.basic)
       .in("tariffs")
       .in(
         jsonBody[Tariff]
           .description("Value to persist")
           .example(Tariff(0.1, None, 0.3, Some(ZonedDateTime.now.plusDays(1))))
-          .validate(nonEmptyAmount.contramap(_.energy))
-          .validate(nonEmptyAmount.asOptionElement.contramap(_.parking))
-          .validate(nonEmptyAmount.and(Validator.max(0.5)).contramap(_.service))
-          .validate(dateInFuture.asOptionElement.contramap(_.startsAt))
+          .validate(nonEmptyAmount("energy").contramap(_.energy))
+          .validate(nonEmptyAmount("parking").asOptionElement.contramap(_.parking))
+          .validate(serviceAmount("service", 0.5).contramap(_.service))
+          .validate(dateInFuture("startsAt").asOptionElement.contramap(_.startsAt))
       )
+      .errorOut(stringBody)
 
-  val insertChargeSession: Endpoint[ChargeSession, Unit, Unit, Nothing] =
+  val insertChargeSession: Endpoint[(String, ChargeSession), String, Unit, Nothing] =
     endpoint
       .name("Create charge session")
       .summary("Creates charge session sent by charge point")
       .post
+      .in(auth.apiKey(header[String]("X-Auth-Token")))
       .in("sessions")
       .in(
         jsonBody[ChargeSession]
           .description("Value to persist")
           .example(ChargeSession(
               UUID.randomUUID().toString
-            , ZonedDateTime.now.minusHours(5)
+            , ZonedDateTime.now.minusHours(1)
             , ZonedDateTime.now.minusMinutes(5)
-            , 55
+            , 0.5
           ))
-          .validate(identifier.contramap(_.driverId))
-          .validate(dateInPast.contramap(_.startedAt))
-          .validate(dateInPast.contramap(_.endedAt))
-          .validate(datesRange.contramap(data => (data.startedAt, data.endedAt)))
-          .validate(nonEmptyAmount.contramap(_.consumed))
+          .validate(identifier("driverId").contramap(_.driverId))
+          .validate(dateInPast("startedAt").contramap(_.startedAt))
+          .validate(dateInPast("endedAt").contramap(_.endedAt))
+          .validate(datesRange("startedAt", "endedAt").contramap(data => (data.startedAt, data.endedAt)))
+          .validate(nonEmptyAmount("consumed").contramap(_.consumed))
       )
+      .errorOut(stringBody)
 
-  val exportChargeSessions: Endpoint[String, Unit, List[ChargeSessionOverview], Nothing] =
+  val exportChargeSessions: Endpoint[String, String, List[ChargeSessionOverview], Nothing] =
     endpoint
       .name("Export charge sessions overview")
       .summary("Downloads charge sessions overview file")
       .get
       // TODO: Use OAuth or similar and access_token to fetch driverId instead
       .in(
-        path[String].validate(identifier)
+        path[String].validate(identifier("driverId")).name("driverId")
       )
       .in("sessions")
       .in("export.csv")
       .out(
         binaryBody[List[ChargeSessionOverview]]
           .and(header("Content-Type", "text/csv"))
-          .and(header("Content-Disposition", "attachment"))
+          .and(header("Content-Disposition", """attachment; filename="export.csv""""))
       )
+      .errorOut(stringBody)
 
   private object Implicits {
     implicit val tariffCodec:  CirceCodec[Tariff]        = deriveCodec
     implicit val sessionCodec: CirceCodec[ChargeSession] = deriveCodec
 
-    // TODO: Provide CSV header derivation
+    implicit val overviewHeaderEncoder: HeaderEncoder[ChargeSessionOverview] =
+      HeaderEncoder.caseEncoder(
+          "Session started"
+        , "Session ended"
+        , "Energy consumer, kW"
+        , "Energy fee, per kWh"
+        , "Parking fee, per hour"
+        , "Service fee, perc."
+        , "Total price"
+        , "Total service fee"
+      )(ChargeSessionOverview.unapply)
     implicit val overviewCsvCodec: Codec[List[ChargeSessionOverview], MediaType.OctetStream, File] =
-      csvFileCodec[ChargeSessionOverview](CsvConfiguration.rfc.withoutHeader)
-  }
+      csvFileCodec[ChargeSessionOverview](CsvConfiguration.rfc.withHeader)
 
-  private def csvFileCodec[T: RowEncoder: HeaderEncoder: HeaderDecoder](config: CsvConfiguration) = {
-    import kantan.csv.ops._
+    private def csvFileCodec[T: RowEncoder: HeaderEncoder: HeaderDecoder](config: CsvConfiguration) = {
+      import kantan.csv.ops._
 
-    Codec.fileCodec
-      .map[List[T]] {
+      Codec.fileCodec
+        .map[List[T]] {
         _
           .asCsvReader[T](config)
           .toList
@@ -99,30 +119,44 @@ object Endpoints {
           file
         }
       )
+    }
   }
 
-  private def dateInFuture: Validator[ZonedDateTime] =
+  private def dateInFuture(field: String): Validator[ZonedDateTime] =
     Validator.custom(
         _.isAfter(ZonedDateTime.now)
-      , "Only future dates are acceptable"
+      , s"[$field] only future dates are acceptable"
     )
 
-  private def dateInPast: Validator[ZonedDateTime] =
+  private def dateInPast(field: String): Validator[ZonedDateTime] =
     Validator.custom(
         !_.isAfter(ZonedDateTime.now)
-      , "No future dates are acceptable"
+      , s"`$field` no future dates are acceptable"
     )
 
-  private def datesRange: Validator[(ZonedDateTime, ZonedDateTime)] =
+  private def datesRange(startField: String, endField: String): Validator[(ZonedDateTime, ZonedDateTime)] =
     Validator.custom(
-        dates => !(dates._1 isAfter dates._2)
-      , "Later date came first in a dates range"
+        {
+          case (startValue, endValue) => !(startValue isAfter endValue)
+        }
+      , s"`$startField` expected to not be greater then `$endField`"
     )
 
-  private def identifier: Validator[String] =
-    Validator.minLength(1)
-      .and(Validator.pattern("""^\S+$"""))
+  private def identifier(field: String): Validator[String] =
+    Validator.custom(
+        str => str.nonEmpty & str.matches("""^\S+$""")
+      , s"`$field` empty or invalid string can't be used as identifier"
+    )
 
-  private def nonEmptyAmount: Validator[Double] =
-    Validator.min(0.0, exclusive = true)
+  private def nonEmptyAmount(field: String): Validator[Double] =
+    Validator.custom(
+        _ > 0
+      , s"`$field` should be positive non-zero value"
+    )
+
+  private def serviceAmount(field: String, max: Double): Validator[Double] =
+    Validator.custom(
+        value => value > 0 && value <= max
+      , s"`$field` should be in a range (0, $max]"
+    )
 }

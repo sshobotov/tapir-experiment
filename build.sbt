@@ -21,6 +21,7 @@ libraryDependencies ++= Seq(
   , "com.nrinaudo"           %% "kantan.csv-generic"        % kantanCsvVersion
   , "org.typelevel"          %% "cats-core"                 % "2.0.0"
   , "org.typelevel"          %% "cats-effect"               % "2.0.0"
+  , "is.cir"                 %% "ciris-core"                % "0.12.1"
   , "com.lihaoyi"            %% "utest"                     % "0.7.1" % "test"
 )
 
