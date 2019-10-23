@@ -15,17 +15,17 @@ object ServiceTests extends TestSuite {
 
       test("calculate should calculate fees without parking fee") {
         val results = FeesCalculator.default.calculate(session, tariff)
-        assert(results == (20, 10))
+        assert(results == (20, 30))
       }
 
       test("calculate should calculate fees with parking fee") {
         val results = FeesCalculator.default.calculate(session, tariff.copy(parking = Some(10)))
-        assert(results == (40, 20))
+        assert(results == (40, 60))
       }
 
       test("calculate should round results") {
         val results = FeesCalculator.default.calculate(session, tariff.copy(energy = 0.00199999))
-        assert(results == (0.2, 0.1))
+        assert(results == (0.2, 0.3))
       }
     }
   }

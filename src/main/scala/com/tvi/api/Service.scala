@@ -30,7 +30,7 @@ class Service[F[_]: Sync: Parallel](
 
         value.into[ChargeSessionStorage.Entity]
           .withFieldConst(_.totalPrice, totalPrice)
-          .withFieldConst(_.totalServiceFee, totalPrice + serviceFee)
+          .withFieldConst(_.totalServiceFee, serviceFee)
           .transform
       }
 
@@ -63,10 +63,10 @@ object Service {
     }
 
   class FeesCalculator(feeRounder: FeeRoundingStrategy, timeRounder: TimeRoundingStrategy) {
-    type TotalPrice = Double
-    type ServiceFee = Double
+    type TotalPrice      = Double
+    type TotalServiceFee = Double
 
-    def calculate(session: ChargeSession, tariff: TariffStorage.Entity): (TotalPrice, ServiceFee) = {
+    def calculate(session: ChargeSession, tariff: TariffStorage.Entity): (TotalPrice, TotalServiceFee) = {
       val energyPrice = session.consumed * tariff.energy
       val parkingFee  = tariff.parking.map { fee =>
         val duration = timeRounder.round(Duration.between(session.startedAt, session.endedAt)).toHours
@@ -74,7 +74,7 @@ object Service {
       }
 
       val totalPrice = energyPrice + parkingFee.getOrElse(0.0)
-      (feeRounder.round(totalPrice), feeRounder.round(totalPrice * tariff.service))
+      (feeRounder.round(totalPrice), feeRounder.round(totalPrice * (1 + tariff.service)))
     }
   }
 
