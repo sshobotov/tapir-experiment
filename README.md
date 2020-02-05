@@ -37,7 +37,7 @@ over and over.
 
 ## Known issues
 
-Library itself is great but pretty immature that is why this application suffers from some problems:
+Library itself is great but has pretty immature documentation that is why this application suffers from some problems:
 
 - expected exceptions used from application logic (authorization credentials check failure, no content for particular user)
 can't be translated into appropriate status code, so by default this exceptions lead to `500 Internal server error`
